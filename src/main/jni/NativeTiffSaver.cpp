@@ -14,6 +14,14 @@ extern "C" {
     int const paramCompression = 0;
     int const paramOrientation = 1;
 
+    void covertImgLineTo24Bit(uint8 *dst, uint8 *src, int len) {
+        for(int i=0; i<len; i++) {
+            if(i%4 == 3) continue;
+            *dst = src[i];
+            dst++;
+        }
+    }
+
     JNIEXPORT jboolean JNICALL Java_org_beyka_tiffbitmapfactory_TiffSaver_save
     (JNIEnv *env, jclass clazz, jstring filePath, jobject bitmap, jobject options, jboolean append) {
 
@@ -345,11 +353,15 @@ extern "C" {
         TIFFSetField(output_image, TIFFTAG_RESOLUTIONUNIT, resUnit);
 
         if (compressionInt == COMPRESSION_CCITTRLE ||compressionInt == COMPRESSION_CCITTFAX3 || compressionInt == COMPRESSION_CCITTFAX4) {
-            TIFFSetField(output_image, TIFFTAG_BITSPERSAMPLE,	1);
-            TIFFSetField(output_image, TIFFTAG_SAMPLESPERPIXEL,	1);
+            TIFFSetField(output_image, TIFFTAG_BITSPERSAMPLE, 1);
+            TIFFSetField(output_image, TIFFTAG_SAMPLESPERPIXEL, 1);
             TIFFSetField(output_image, TIFFTAG_ROWSPERSTRIP, 1);
             TIFFSetField(output_image, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_MINISBLACK);
             TIFFSetField(output_image, TIFFTAG_FILLORDER, FILLORDER_MSB2LSB);
+        } else if (compressionInt == COMPRESSION_JPEG) {
+            TIFFSetField(output_image, TIFFTAG_BITSPERSAMPLE, 8);
+            TIFFSetField(output_image, TIFFTAG_SAMPLESPERPIXEL, 3);
+            TIFFSetField(output_image, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_RGB);
         } else {
             TIFFSetField(output_image, TIFFTAG_BITSPERSAMPLE, 8);
             TIFFSetField(output_image, TIFFTAG_SAMPLESPERPIXEL, 4);
@@ -390,9 +402,14 @@ extern "C" {
             }
             free(bilevel);
         } else if (compressionInt == COMPRESSION_JPEG) {
+            int lineBufSize = img_width*3; //24bit per pixel
+            uint8 *buf = (uint8 *)malloc(lineBufSize);
             for (int row = 0; row < img_height; row++) {
-                TIFFWriteScanline(output_image, &img[row * img_width], row, 0);
+                memset(buf, 0, lineBufSize);
+                covertImgLineTo24Bit(buf, (uint8*)&img[row * img_width], img_width*4);
+                TIFFWriteScanline(output_image, buf, row, 0);
             }
+            free(buf);
         } else {
             TIFFSetField(output_image, TIFFTAG_ROWSPERSTRIP, 1);
             for (int row = 0; row < img_height; row++) {
